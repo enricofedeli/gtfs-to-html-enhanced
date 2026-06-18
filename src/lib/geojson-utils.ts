@@ -3,6 +3,8 @@ import simplify from '@turf/simplify';
 import { featureCollection, round } from '@turf/helpers';
 import { logWarning } from './log-utils.js';
 import { getBaseTripIds } from './trip-id-utils.js';
+import type { NetworkComparison } from './comparison-utils.js';
+import type { Config } from '../types/index.ts';
 
 /*
  * Merge any number of geojson objects into one. Only works for `FeatureCollection`.
@@ -100,6 +102,52 @@ export function getAgencyGeoJSON(config) {
     });
   } catch {
     logWarning(config)('Unable to simplify geojson');
+    simplifiedGeojson = geojson;
+  }
+
+  return truncateGeoJSONDecimals(simplifiedGeojson, config);
+}
+
+/*
+ * Get the GeoJSON for a comparison — proposed network stops colour-coded by diff status.
+ * Stop properties include `comparisonStatus`: 'new' | 'removed' | 'unchanged'
+ * Route lines include `networkType`: 'existing' | 'proposed'
+ */
+export function getComparisonGeoJSON(
+  comparison: NetworkComparison,
+  config: Config,
+) {
+  // Proposed network shapes + stops (from currently-open proposed DB)
+  const proposedShapes = getShapesAsGeoJSON();
+  const proposedStops = getStopsAsGeoJSON();
+
+  // Tag proposed features
+  for (const feature of proposedShapes.features) {
+    feature.properties = { ...feature.properties, networkType: 'proposed' };
+  }
+
+  for (const feature of proposedStops.features) {
+    const stopId = feature.properties?.stop_id;
+    const isNew =
+      stopId &&
+      comparison.stopMatchTable.proposedToExisting.get(stopId) === null;
+    feature.properties = {
+      ...feature.properties,
+      networkType: 'proposed',
+      comparisonStatus: isNew ? 'new' : 'unchanged',
+    };
+  }
+
+  const geojson = mergeGeojson(proposedShapes, proposedStops);
+
+  let simplifiedGeojson;
+  try {
+    simplifiedGeojson = simplify(geojson, {
+      tolerance: 1 / 10 ** (config.coordinatePrecision ?? 5),
+      highQuality: true,
+    });
+  } catch {
+    logWarning(config)('Unable to simplify comparison geojson');
     simplifiedGeojson = geojson;
   }
 

@@ -1,5 +1,11 @@
 import { ConfigAgency } from 'gtfs';
 
+export interface TimePeriod {
+  label: string;
+  start: string; // "HH:MM" 24-hour
+  end: string; // "HH:MM" 24-hour
+}
+
 export interface Config {
   agencies: ConfigAgency[];
   assetPath?: string;
@@ -54,4 +60,17 @@ export interface Config {
   verbose?: boolean;
   zipOutput?: boolean;
   logFunction?: (text: string) => void;
+
+  // Network comparison mode
+  comparisonMode?: boolean;
+  comparisonAgency?: ConfigAgency & { sqlitePath?: string };
+  stopMatchingDistanceMeters?: number;
+  routeOverlapThreshold?: number;
+  timePeriods?: TimePeriod[];
+  generateStopPages?: boolean;
+
+  // Branding
+  brandingLogo?: string;
+  brandingTitle?: string;
+  brandingAccentColor?: string;
 }

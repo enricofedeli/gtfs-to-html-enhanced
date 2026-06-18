@@ -1,0 +1,39 @@
+include formatting_functions.pug
+
+.stop-departures-page
+  h1
+    | Stop:
+    span= stopData.stopName
+    if stopData.stopId
+      small  (#{stopData.stopId})
+
+  .departures-comparison
+    .departures-column.departures-column--existing
+      h2 Existing Network
+      .departures-freq-summary
+        each period, label in stopData.existingTripsPerHour
+          span #{label}: #{period} trips/h &nbsp;
+      .departures-list
+        if stopData.existingDepartures.length === 0
+          .departure-row No service at this stop
+        else
+          each dep in stopData.existingDepartures
+            .departure-row
+              span.departure-route-badge(style=`background-color: ${dep.routeColor}; color: ${dep.routeTextColor}`)= dep.routeShortName
+              span.departure-time= dep.departureTime
+              span.departure-headsign= dep.headsign
+
+    .departures-column.departures-column--proposed
+      h2 Proposed Network
+      .departures-freq-summary
+        each period, label in stopData.proposedTripsPerHour
+          span #{label}: #{period} trips/h &nbsp;
+      .departures-list
+        if stopData.proposedDepartures.length === 0
+          .departure-row No service at this stop
+        else
+          each dep in stopData.proposedDepartures
+            .departure-row
+              span.departure-route-badge(style=`background-color: ${dep.routeColor}; color: ${dep.routeTextColor}`)= dep.routeShortName
+              span.departure-time= dep.departureTime
+              span.departure-headsign= dep.headsign

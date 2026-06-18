@@ -1,0 +1,146 @@
+include formatting_functions.pug
+
+.timetable-overview.comparison-overview
+  if config.brandingTitle
+    h1.branding-title= config.brandingTitle
+  else
+    h1= title
+
+  if comparison
+    .comparison-summary
+      .summary-stats
+        .stat-group
+          h2 Existing Network
+          .stat-item
+            .stat-value= comparison.summary.existingRouteCount
+            .stat-label routes
+          .stat-item
+            .stat-value= comparison.summary.existingStopCount
+            .stat-label stops
+          .stat-item
+            .stat-value= comparison.summary.existingTripCount
+            .stat-label trips/day
+        .stat-group.stat-group--proposed
+          h2 Proposed Network
+          .stat-item
+            .stat-value= comparison.summary.proposedRouteCount
+            .stat-label routes
+          .stat-item
+            .stat-value= comparison.summary.proposedStopCount
+            .stat-label stops
+          .stat-item
+            .stat-value= comparison.summary.proposedTripCount
+            .stat-label trips/day
+        .stat-group
+          h2 Changes
+          .stat-item.stat-item--new
+            .stat-value= comparison.summary.newRoutes
+            .stat-label new routes
+          .stat-item.stat-item--removed
+            .stat-value= comparison.summary.removedRoutes
+            .stat-label removed routes
+          .stat-item.stat-item--modified
+            .stat-value= comparison.summary.modifiedRoutes
+            .stat-label modified routes
+
+    .comparison-legend
+      .legend-item.legend-item--new
+        .legend-swatch
+        span New route
+      .legend-item.legend-item--removed
+        .legend-swatch
+        span Removed route
+      .legend-item.legend-item--modified
+        .legend-swatch
+        span Modified route
+      .legend-item.legend-item--unchanged
+        .legend-swatch
+        span Unchanged route
+
+    .route-sections
+      - const newRoutes = comparison.routeDiffs.filter(d => d.status === 'new')
+      - const removedRoutes = comparison.routeDiffs.filter(d => d.status === 'removed')
+      - const modifiedRoutes = comparison.routeDiffs.filter(d => d.status === 'modified')
+      - const unchangedRoutes = comparison.routeDiffs.filter(d => d.status === 'unchanged')
+
+      if newRoutes.length > 0
+        section.route-section.route-section--new
+          h2
+            span.section-badge.section-badge--new NEW
+            |  Routes (#{newRoutes.length})
+          .route-diff-list
+            each diff in newRoutes
+              - const timetablePage = timetablePages.find(p => p.route_ids && diff.proposedRouteIds.some(id => p.route_ids.includes(id)))
+              .route-diff-item.route-diff-item--new
+                if timetablePage
+                  a.route-diff-link(href=timetablePage.relativePath)
+                    .route-diff-label= diff.label
+                    .route-diff-meta #{diff.proposedTripCount} trips
+                else
+                  .route-diff-label= diff.label
+                  .route-diff-meta #{diff.proposedTripCount} trips
+
+      if removedRoutes.length > 0
+        section.route-section.route-section--removed
+          h2
+            span.section-badge.section-badge--removed REMOVED
+            |  Routes (#{removedRoutes.length})
+          .route-diff-list
+            each diff in removedRoutes
+              .route-diff-item.route-diff-item--removed
+                .route-diff-label= diff.label
+                .route-diff-meta #{diff.existingTripCount} trips (eliminated)
+
+      if modifiedRoutes.length > 0
+        section.route-section.route-section--modified
+          h2
+            span.section-badge.section-badge--modified MODIFIED
+            |  Routes (#{modifiedRoutes.length})
+          .route-diff-list
+            each diff in modifiedRoutes
+              - const timetablePage = timetablePages.find(p => p.route_ids && diff.proposedRouteIds.some(id => p.route_ids.includes(id)))
+              .route-diff-item.route-diff-item--modified
+                if timetablePage
+                  a.route-diff-link(href=timetablePage.relativePath)
+                    .route-diff-label= diff.label
+                    if diff.addedStopIds.length > 0 || diff.removedStopIds.length > 0
+                      .route-diff-stops
+                        if diff.addedStopIds.length > 0
+                          span.stops-added +#{diff.addedStopIds.length} stops
+                        if diff.removedStopIds.length > 0
+                          span.stops-removed -#{diff.removedStopIds.length} stops
+                    .route-diff-meta
+                      | #{diff.existingTripCount} → #{diff.proposedTripCount} trips
+                else
+                  .route-diff-label= diff.label
+
+      if unchangedRoutes.length > 0
+        section.route-section.route-section--unchanged
+          h2
+            span.section-badge.section-badge--unchanged UNCHANGED
+            |  Routes (#{unchangedRoutes.length})
+          .route-diff-list
+            each diff in unchangedRoutes
+              - const timetablePage = timetablePages.find(p => p.route_ids && diff.proposedRouteIds.some(id => p.route_ids.includes(id)))
+              .route-diff-item
+                if timetablePage
+                  a.route-diff-link(href=timetablePage.relativePath)= diff.label
+                else
+                  span= diff.label
+
+  else
+    .overview-list
+      each timetablePage in timetablePages
+        if config.allowEmptyTimetables || timetablePage.consolidatedTimetables.length > 0
+          - const timetableRoutes = _.uniqBy(_.flatMap(timetablePage.consolidatedTimetables, timetable => timetable.routes), 'route_id')
+          a.timetable-page-link(href=timetablePage.relativePath)
+            each route in timetableRoutes
+              .route-color-swatch-large(style=`background-color: ${formatRouteColor(route)}; color: ${formatRouteTextColor(route)};`)= route.route_short_name || ''
+            .timetable-page-label= timetablePage.timetable_page_label
+
+  if config.showMap && geojson
+    #system_map.overview-map
+    script.
+      const geojson = !{JSON.stringify(optimizeGeojsonProperties(geojson)) || '\'\''};
+      const mapStyleUrl = '#{config.mapStyleUrl}';
+      createSystemMap();

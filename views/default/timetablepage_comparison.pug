@@ -1,0 +1,99 @@
+include formatting_functions.pug
+
+<!-- Timetable generated on #{new Date().toISOString()} using GTFS-to-HTML version #{config.gtfsToHtmlVersion} -->
+.timetable-page(class=`menu-type-${config.menuType}`)
+  if config.showRouteTitle
+    - const timetableRouteList = _.uniqBy(_.flatMap(timetablePage.consolidatedTimetables, timetable => timetable.routes), 'route_id')
+    h1
+      each route in timetableRouteList
+        .route-color-swatch-large(style=`background-color: ${formatRouteColor(route)}; color: ${formatRouteTextColor(route)};`)= route.route_short_name || ''
+      div= timetablePage.timetable_page_label
+    if config.effectiveDate
+      .effective-date= `Effective ${config.effectiveDate}`
+
+  //- Show comparison diff banner if comparison data is available
+  if routeDiff && routeDiff.length > 0
+    each diff in routeDiff
+      - const statusClass = `comparison-diff-banner--${diff.status}`
+      .comparison-diff-banner(class=statusClass)
+        if diff.status !== 'unchanged'
+          span.comparison-diff-badge(class=`comparison-diff-badge--${diff.status}`)= diff.status.toUpperCase()
+        if diff.status === 'new'
+          span This is a new route in the proposed network
+        else if diff.status === 'removed'
+          span This route is removed in the proposed network
+        else if diff.status === 'modified'
+          span This route has been modified
+          if diff.addedStopIds.length > 0
+            span.stops-added &nbsp;(+#{diff.addedStopIds.length} stops added
+            if diff.removedStopIds.length > 0
+              span , -#{diff.removedStopIds.length} stops removed)
+            else
+              span )
+          else if diff.removedStopIds.length > 0
+            span.stops-removed &nbsp;(-#{diff.removedStopIds.length} stops removed)
+          if diff.existingTripCount !== diff.proposedTripCount
+            span &nbsp;| #{diff.existingTripCount} → #{diff.proposedTripCount} trips/day
+        else
+          span No changes from existing network
+
+  include timetable_menu.pug
+
+  if config.hasGtfsRealtimeAlerts
+    .timetable-alerts
+      h2 Service Alerts
+      .timetable-alerts-list
+        .timetable-alert-empty
+          | There are no service alerts at this time.
+
+  each timetable in timetablePage.consolidatedTimetables
+    - const thisDiff = routeDiff && routeDiff.find(d => d.proposedRouteIds.some(id => timetable.route_ids.includes(id)))
+    .timetable(id=cssEscape(`timetable_id_${timetable.timetable_id}`) data-day-list=timetable.dayList data-direction-name=timetable.direction_name || timetable.timetable_label data-timetable-id=timetable.timetable_id data-direction-id=timetable.direction_id data-route-id=timetable.route_ids.join('_'))
+      if config.showRouteTitle
+        .timetable-label
+          h2= `${timetable.timetable_label} | ${timetable.dayListLong}`
+            each note in getNotesForTimetableLabel(timetable.notes)
+              include timetable_note_symbol.pug
+          if timetable.service_notes !== null
+            .timetable-service-notes= timetable.service_notes
+
+      if config.showMap
+        include timetable_map.pug
+      if timetable.orientation === 'horizontal'
+        include timetable_horizontal.pug
+      else if timetable.orientation === 'hourly'
+        include timetable_hourly.pug
+      else if timetable.orientation === 'vertical'
+        include timetable_vertical.pug
+
+      .timetable-footer
+        if hasNotesOrNotices(timetable)
+          .notes
+            if timetable.requestPickupSymbolUsed
+              .note(id=cssEscape(`note-${timetable.timetable_id}-request-pickup`))= `${config.requestPickupSymbol} = ${config.requestPickupText}`
+            if timetable.noPickupSymbolUsed
+              .note(id=cssEscape(`note-${timetable.timetable_id}-no-pickup`))= `${config.noPickupSymbol} = ${config.noPickupText}`
+            if timetable.requestDropoffSymbolUsed
+              .note(id=cssEscape(`note-${timetable.timetable_id}-request-dropoff`))= `${config.requestDropoffSymbol} = ${config.requestDropoffText}`
+            if timetable.noDropoffSymbolUsed
+              .note(id=cssEscape(`note-${timetable.timetable_id}-no-dropoff`))= `${config.noDropoffSymbol} = ${config.noDropoffText}`
+            if timetable.noServiceSymbolUsed
+              .note(id=cssEscape(`note-${timetable.timetable_id}-no-service`))= `${config.noServiceSymbol} = ${config.noServiceText}`
+            if timetable.interpolatedStopSymbolUsed
+              .note(id=cssEscape(`note-${timetable.timetable_id}-interpolated-stop`))= `${config.interpolatedStopSymbol} = ${config.interpolatedStopText}`
+            each note in _.uniqBy(timetable.notes, 'note_id')
+              .note(id=cssEscape(`note-${timetable.timetable_id}-${note.note_id}`))
+                span= note.symbol
+                span &nbsp;=&nbsp;
+                span!= md(note.note)
+
+        if config.showCalendarExceptions && timetable.calendarDates.includedDates.length
+          .included-dates= `${config.serviceProvidedOnText}: ${timetable.calendarDates.includedDates.join(', ')}`
+
+        if config.showCalendarExceptions && timetable.calendarDates.excludedDates.length
+          .excluded-dates= `${config.serviceNotProvidedOnText}: ${timetable.calendarDates.excludedDates.join(', ')}`
+
+  if config.showMap
+    script.
+        const { gtfsRealtimeUrls, mapStyleUrl, routeData, stopData, pageData: { routeIds, tripIds, stopIds, geojsons } } = !{JSON.stringify(prepareMapData(timetablePage, config))};
+        createMaps();

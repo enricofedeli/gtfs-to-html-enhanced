@@ -1,0 +1,7 @@
+extends layout
+block content
+  include stop_departures.pug
+
+block extraHeader
+  link(rel="stylesheet" href=`${config.assetPath}css/timetable_styles.css`)
+  link(rel="stylesheet" href=`${config.assetPath}css/comparison_styles.css`)
