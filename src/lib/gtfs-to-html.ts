@@ -36,6 +36,8 @@ import {
   toGtfsToHtmlError,
 } from './errors.js';
 
+import { gtfsToHtmlComparison } from './comparison-pipeline.js';
+
 import type { Config } from '../types/index.ts';
 
 /*
@@ -43,6 +45,10 @@ import type { Config } from '../types/index.ts';
  */
 /* eslint-disable complexity */
 const gtfsToHtml = async (initialConfig: Config) => {
+  if (initialConfig.comparisonMode === true) {
+    return gtfsToHtmlComparison(initialConfig);
+  }
+
   const config = setDefaultConfig(initialConfig);
 
   // Start timer

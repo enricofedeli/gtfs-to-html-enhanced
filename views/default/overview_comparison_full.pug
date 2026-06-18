@@ -1,0 +1,14 @@
+extends layout
+block content
+  include overview_comparison.pug
+
+block extraHeader
+  if config.showMap
+    script(src=`${config.assetPath}js/maplibre-gl.js`)
+    script(src=`${config.assetPath}js/maplibre-gl-geocoder.js`)
+    script(src=`${config.assetPath}js/system-map.js`)
+    link(href=`${config.assetPath}css/maplibre-gl.css` rel="stylesheet")
+    link(href=`${config.assetPath}css/maplibre-gl-geocoder.css` rel="stylesheet")
+
+  link(rel="stylesheet" href=`${config.assetPath}css/overview_styles.css`)
+  link(rel="stylesheet" href=`${config.assetPath}css/comparison_styles.css`)
