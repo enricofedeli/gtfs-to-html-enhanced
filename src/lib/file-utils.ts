@@ -236,30 +236,23 @@ export async function copyStaticAssets(config: Config, outputPath: string) {
   }
 
   if (config.showMap) {
-    await copyFile(
-      join(thisModuleFolderPath, 'dist/browser/maplibre-gl.js'),
-      join(outputPath, 'js/maplibre-gl.js'),
-    );
-
-    await copyFile(
-      join(thisModuleFolderPath, 'dist/browser/maplibre-gl.js.map'),
-      join(outputPath, 'js/maplibre-gl.js.map'),
-    );
-
-    await copyFile(
-      join(thisModuleFolderPath, 'dist/browser/maplibre-gl.css'),
-      join(outputPath, 'css/maplibre-gl.css'),
-    );
-
-    await copyFile(
-      join(thisModuleFolderPath, 'dist/browser/maplibre-gl-geocoder.js'),
-      join(outputPath, 'js/maplibre-gl-geocoder.js'),
-    );
-
-    await copyFile(
-      join(thisModuleFolderPath, 'dist/browser/maplibre-gl-geocoder.css'),
-      join(outputPath, 'css/maplibre-gl-geocoder.css'),
-    );
+    // MapLibre browser bundles may not be present in dev environments or when
+    // selfContained: true is used (inlineLocalAssets() substitutes CDN URLs).
+    // Silently skip missing files rather than crashing the whole pipeline.
+    const mapLibreFiles = [
+      ['dist/browser/maplibre-gl.js', 'js/maplibre-gl.js'],
+      ['dist/browser/maplibre-gl.js.map', 'js/maplibre-gl.js.map'],
+      ['dist/browser/maplibre-gl.css', 'css/maplibre-gl.css'],
+      ['dist/browser/maplibre-gl-geocoder.js', 'js/maplibre-gl-geocoder.js'],
+      ['dist/browser/maplibre-gl-geocoder.css', 'css/maplibre-gl-geocoder.css'],
+    ] as const;
+    for (const [src, dest] of mapLibreFiles) {
+      try {
+        await copyFile(join(thisModuleFolderPath, src), join(outputPath, dest));
+      } catch {
+        // Bundle not present — CDN substitution will handle it at render time
+      }
+    }
   }
 }
 
@@ -392,11 +385,19 @@ export async function inlineLocalAssets(
 
   const replacements: [string, string][] = [];
 
+  // Extract the value of a named attribute from a tag string (e.g. href="...")
+  function attr(tag: string, name: string): string | undefined {
+    const m = tag.match(new RegExp(`\\b${name}="([^"]*)"`, 'i'));
+    return m?.[1];
+  }
+
   // Inline <link rel="stylesheet" href="relative/path.css">
-  for (const m of html.matchAll(
-    /<link\b[^>]*\brel="stylesheet"[^>]*\bhref="((?!https?:\/\/)[^"]+)"[^>]*\/?>/gi,
-  )) {
-    const [tag, href] = m;
+  // Handles any attribute order (href before or after rel).
+  for (const m of html.matchAll(/<link\b[^>]*>/gi)) {
+    const [tag] = m;
+    if (!/\brel="stylesheet"/i.test(tag)) continue;
+    const href = attr(tag, 'href');
+    if (!href || /^https?:\/\//i.test(href)) continue;
     const filename = href.split('/').at(-1) ?? href;
     try {
       const css = await readFile(resolveAsset(href), 'utf8');
