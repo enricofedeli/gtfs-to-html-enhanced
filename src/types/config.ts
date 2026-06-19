@@ -73,4 +73,17 @@ export interface Config {
   brandingLogo?: string;
   brandingTitle?: string;
   brandingAccentColor?: string;
+
+  // Diagnostics
+  runDiagnostics?: boolean;
+  diagnosticsOutputPath?: string;
+  diagnosticsSampleDate?: string; // ISO "YYYY-MM-DD"; required for service-day resolution
+  diagnosticsZone?: {
+    routeIds?: string[];
+    stopIds?: string[];
+    boundingBox?: [number, number, number, number]; // [minLon, minLat, maxLon, maxLat]
+  };
+  diagnosticsHiddenTrunkMinTripsPerHour?: number; // flag threshold (default 6 = every 10 min)
+  diagnosticsRailFeedSqlitePath?: string; // path to rail DB for rail-bus matrix diagnostic
+  diagnosticsMaxTransferWaitMinutes?: number; // flag threshold for rail-bus waits (default 20)
 }
