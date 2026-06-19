@@ -51,6 +51,7 @@ export interface Config {
   showStopCity?: boolean;
   showStopDescription?: boolean;
   showStoptimesForRequestStops?: boolean;
+  selfContained?: boolean;
   skipImport?: boolean;
   sortingAlgorithm?: string;
   startDate?: string;

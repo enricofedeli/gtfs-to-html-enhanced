@@ -363,6 +363,76 @@ export function generateFolderName(timetablePage) {
 }
 
 /*
+ * Inline local CSS <link> and JS <script src> tags into the HTML string.
+ *
+ * Called when config.selfContained === true so the resulting HTML file has no
+ * external local dependencies and can be opened from any directory.
+ *
+ * Large third-party bundles (MapLibre, geocoder) are replaced with CDN URLs
+ * instead of being inlined — they are too large to embed per-page.
+ * CDN URLs (https://) already present in the HTML are always left unchanged.
+ */
+export async function inlineLocalAssets(
+  html: string,
+  viewsFolderPath: string,
+): Promise<string> {
+  const CDN: Record<string, string> = {
+    'maplibre-gl.css': 'https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css',
+    'maplibre-gl.js': 'https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js',
+    'maplibre-gl-geocoder.js':
+      'https://unpkg.com/@maplibre/maplibre-gl-geocoder@1/dist/maplibre-gl-geocoder.min.js',
+    'maplibre-gl-geocoder.css':
+      'https://unpkg.com/@maplibre/maplibre-gl-geocoder@1/dist/maplibre-gl-geocoder.css',
+  };
+
+  // Strip leading "../" or "./" sequences and resolve under viewsFolderPath
+  function resolveAsset(href: string): string {
+    return join(viewsFolderPath, href.replace(/^(\.\.\/|\.\/)+/, ''));
+  }
+
+  const replacements: [string, string][] = [];
+
+  // Inline <link rel="stylesheet" href="relative/path.css">
+  for (const m of html.matchAll(
+    /<link\b[^>]*\brel="stylesheet"[^>]*\bhref="((?!https?:\/\/)[^"]+)"[^>]*\/?>/gi,
+  )) {
+    const [tag, href] = m;
+    const filename = href.split('/').at(-1) ?? href;
+    try {
+      const css = await readFile(resolveAsset(href), 'utf8');
+      replacements.push([tag, `<style>/* ${filename} */\n${css}</style>`]);
+    } catch {
+      if (CDN[filename])
+        replacements.push([
+          tag,
+          `<link rel="stylesheet" href="${CDN[filename]}">`,
+        ]);
+      // else: unknown local file, leave unchanged
+    }
+  }
+
+  // Inline <script src="relative/path.js" ...></script>
+  for (const m of html.matchAll(
+    /<script\b[^>]*\bsrc="((?!https?:\/\/)[^"]+)"[^>]*><\/script>/gi,
+  )) {
+    const [tag, src] = m;
+    const filename = src.split('/').at(-1) ?? src;
+    try {
+      const js = await readFile(resolveAsset(src), 'utf8');
+      replacements.push([tag, `<script>/* ${filename} */\n${js}</script>`]);
+    } catch {
+      if (CDN[filename])
+        replacements.push([tag, `<script src="${CDN[filename]}"></script>`]);
+    }
+  }
+
+  for (const [tag, replacement] of replacements) {
+    html = html.replace(tag, replacement);
+  }
+  return html;
+}
+
+/*
  * Render the HTML for a timetable based on the config.
  */
 export async function renderTemplate(
@@ -373,7 +443,7 @@ export async function renderTemplate(
   const templatePath = getPathToTemplateFile(templateFileName, config);
 
   // Make template functions, lodash and marked available inside pug templates.
-  const html = await renderFile(templatePath, {
+  let html = await renderFile(templatePath, {
     _,
     cssEscape,
     md: (text: string) => sanitizeHtml(marked.parseInline(text) as string),
@@ -382,6 +452,11 @@ export async function renderTemplate(
     formatRouteTextColor,
     ...templateVars,
   });
+
+  // Inline all local CSS/JS assets when selfContained is requested
+  if (config.selfContained === true) {
+    html = await inlineLocalAssets(html, getPathToViewsFolder(config));
+  }
 
   // Beautify HTML if `beautify` is set in config.
   if (config.beautify === true) {
