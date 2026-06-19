@@ -396,6 +396,9 @@ export async function runHiddenTrunkDiagnostic(
           combined_trips_per_hour: r.combined_trips_per_hour,
           max_single_route_trips_per_hour: r.max_single_route_trips_per_hour,
           contributing_routes: r.contributing_routes,
+          // route_ids_csv is used by the HTML filter JS to toggle segments by route.
+          // Stored as comma-separated string for MapLibre expression compatibility.
+          route_ids_csv: r.contributing_route_ids.replace(/ \| /g, ','),
           flagged: r.flagged,
         },
       };

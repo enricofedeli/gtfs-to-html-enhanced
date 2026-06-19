@@ -113,8 +113,9 @@ export async function runBranchDilutionDiagnostic(
   timeBands: TimeBand[],
   zone: ZoneFilter,
 ): Promise<BranchDilutionResult[]> {
-  // Dilution ratio above which we flag: trunk headway more than 1.5× better than worst branch
-  const dilutionThreshold = 1.5;
+  const dilutionThreshold =
+    config.diagnosticsBranchDilutionRatioThreshold ?? 1.5;
+  const minTrunkTph = config.diagnosticsBranchDilutionMinTrunkTph ?? 1.0;
 
   if (serviceIds.size === 0) {
     await writeStandardOutputs(
@@ -325,7 +326,8 @@ export async function runBranchDilutionDiagnostic(
       // Low-frequency rural routes with 0.3 tph trunk are not "diluted" — they just
       // have sparse service overall.  The 9999 sentinel still correctly captures
       // "trunk runs, some branch doesn't" when trunk >= 1 tph.
-      const flagged = trunkTph >= 1.0 && dilutionRatio > dilutionThreshold;
+      const flagged =
+        trunkTph >= minTrunkTph && dilutionRatio > dilutionThreshold;
 
       results.push({
         route_id: group.routeId,

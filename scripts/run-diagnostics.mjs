@@ -20,7 +20,7 @@ if (config.outputPath && !path.isAbsolute(config.outputPath)) {
 }
 
 const { openDb, importGtfs } = await import('gtfs');
-const { runDiagnostics } = await import('../dist/index.js');
+const { runDiagnostics, copyStaticAssets } = await import('../dist/index.js');
 
 const sqlitePath = config.sqlitePath ?? '/tmp/gtfs-diagnostics.sqlite';
 
@@ -34,5 +34,16 @@ if (!config.skipImport) {
 } else {
   console.log('Skipping import (skipImport=true).');
 }
+
+// Resolve diagnostics output dir (mirrors logic in runDiagnostics)
+const outputPath = config.outputPath ?? path.join(process.cwd(), 'html');
+const diagnosticsDir = config.diagnosticsOutputPath ?? path.join(outputPath, 'diagnostics');
+const assetsParentDir = path.dirname(diagnosticsDir);
+
+// Copy CSS/JS assets to the parent of diagnostics/ so assetPath="../" works.
+// Diagnostics uses CDN for MapLibre, so suppress the showMap asset copy
+// (which tries to copy bundled maplibre-gl.js that may not exist in dev setups).
+console.log(`Copying static assets to ${assetsParentDir}…`);
+await copyStaticAssets({ ...config, showMap: false }, assetsParentDir);
 
 await runDiagnostics(config);

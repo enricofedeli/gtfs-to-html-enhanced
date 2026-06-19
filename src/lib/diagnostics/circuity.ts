@@ -52,8 +52,6 @@ function haversineKm(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-const CIRCUITY_FLAG_THRESHOLD = 2.0;
-
 export async function runCircuity(
   db: any,
   config: Config,
@@ -62,6 +60,10 @@ export async function runCircuity(
   serviceIds: Set<string>,
   zone: ZoneFilter,
 ): Promise<CircuityResult[]> {
+  const circuityFlagThreshold = config.diagnosticsCircuityFlagThreshold ?? 2.0;
+  const circuityMinStraightKm =
+    config.diagnosticsCircuityMinStraightLineKm ?? 0.2;
+
   if (serviceIds.size === 0) {
     await writeStandardOutputs(
       outputDir,
@@ -169,7 +171,7 @@ export async function runCircuity(
     // Circular routes (first stop ≈ last stop, straight-line < 200 m) are excluded
     // from circuity flagging: the metric is undefined for loop routes and produces
     // very large ratios (path_km / ~0) that flood the top-20 list.
-    const isCircular = straightKm < 0.2;
+    const isCircular = straightKm < circuityMinStraightKm;
     const ratio = !isCircular && straightKm > 0 ? pathKm / straightKm : 9999;
 
     results.push({
@@ -179,7 +181,7 @@ export async function runCircuity(
       path_length_km: Math.round(pathKm * 10) / 10,
       straight_line_km: Math.round(straightKm * 10) / 10,
       circuity_ratio: isCircular ? 0 : Math.round(ratio * 100) / 100,
-      flagged: !isCircular && ratio > CIRCUITY_FLAG_THRESHOLD,
+      flagged: !isCircular && ratio > circuityFlagThreshold,
     });
   }
 
@@ -196,7 +198,7 @@ export async function runCircuity(
 
   const summaryText = [
     summaryHeader('Scaffold: Circuity Metric', sampleDate, new Date()),
-    `Flag threshold  : circuity ratio > ${CIRCUITY_FLAG_THRESHOLD}`,
+    `Flag threshold  : circuity ratio > ${circuityFlagThreshold}`,
     `Routes analysed : ${results.length}`,
     `Flagged         : ${flagged.length}`,
     '',

@@ -4,39 +4,37 @@
  * runDiagnostics() is the single public function.  It:
  *   1. Validates that diagnosticsSampleDate is set in config.
  *   2. Resolves active service_ids for that date against the currently-open DB.
- *   3. Runs each enabled diagnostic sequentially, writing output to diagnosticsOutputPath.
- *   4. Prints a summary to stdout.
+ *   3. Runs each enabled diagnostic sequentially, writing CSV/JSON/summary text.
+ *   4. Generates a single diagnostics/index.html visual report.
  *
  * The diagnostics assume that the GTFS database has already been imported and that
  * openDb() returns the active singleton.  Run this AFTER the normal import pipeline.
  *
- * Usage (config additions required):
- *   {
- *     "runDiagnostics": true,
- *     "diagnosticsSampleDate": "2024-10-15",
- *     "diagnosticsOutputPath": "html/bologna/diagnostics",
- *     "diagnosticsHiddenTrunkMinTripsPerHour": 6,
- *     "diagnosticsMaxTransferWaitMinutes": 20,
- *     "diagnosticsRailFeedSqlitePath": "/tmp/gtfs-sfm.sqlite",
- *     "diagnosticsZone": {
- *       "boundingBox": [11.2, 44.4, 11.5, 44.6]
- *     },
- *     "timePeriods": [
- *       { "label": "Early",   "start": "04:00", "end": "07:00" },
- *       { "label": "AM Peak", "start": "07:00", "end": "09:00" },
- *       { "label": "Midday",  "start": "09:00", "end": "16:00" },
- *       { "label": "PM Peak", "start": "16:00", "end": "19:00" },
- *       { "label": "Evening", "start": "19:00", "end": "24:00" }
- *     ]
- *   }
+ * Config keys (all optional with defaults):
+ *   diagnosticsSampleDate                 "YYYY-MM-DD"  REQUIRED
+ *   diagnosticsOutputPath                 string        default: outputPath + "/diagnostics"
+ *   diagnosticsHiddenTrunkMinTripsPerHour number        default: 6  (every 10 min)
+ *   diagnosticsBranchDilutionRatioThreshold number      default: 1.5
+ *   diagnosticsBranchDilutionMinTrunkTph  number        default: 1.0
+ *   diagnosticsCircuityFlagThreshold      number        default: 2.0
+ *   diagnosticsCircuityMinStraightLineKm  number        default: 0.2
+ *   diagnosticsRailFeedSqlitePath         string        enables rail-bus matrix
+ *   diagnosticsMaxTransferWaitMinutes     number        default: 20
+ *   diagnosticsZone                       object        { routeIds?, stopIds?, boundingBox? }
+ *   timePeriods                           TimePeriod[]  custom time bands
  */
 
 import path from 'node:path';
 import process from 'node:process';
+import { readFile, writeFile } from 'node:fs/promises';
 
-import { openDb } from 'gtfs';
+import { getAgencies } from 'gtfs';
 
 import type { Config } from '../../types/index.js';
+import type { SegmentResult as HiddenTrunkResult } from './hidden-trunk.js';
+import type { BranchDilutionResult } from './branch-dilution.js';
+import type { SpanLegibilityResult } from './span-legibility.js';
+import type { CircuityResult } from './circuity.js';
 import {
   resolveServiceIds,
   parseTimeBands,
@@ -45,6 +43,7 @@ import {
   ensureTimeCols,
 } from './db-utils.js';
 import { makeOutputDir } from './output-utils.js';
+import { renderTemplate } from '../file-utils.js';
 import { runHiddenTrunkDiagnostic } from './hidden-trunk.js';
 import { runBranchDilutionDiagnostic } from './branch-dilution.js';
 import { runRailBusMatrix } from './rail-bus-matrix.js';
@@ -66,14 +65,12 @@ export async function runDiagnostics(config: Config): Promise<string> {
     );
   }
 
-  // Validate ISO date format
   if (!/^\d{4}-\d{2}-\d{2}$/.test(sampleDate)) {
     throw new Error(
       `config.diagnosticsSampleDate must be "YYYY-MM-DD", got: "${sampleDate}"`,
     );
   }
 
-  // Resolve output path
   const outputDir =
     config.diagnosticsOutputPath ??
     path.join(
@@ -87,14 +84,9 @@ export async function runDiagnostics(config: Config): Promise<string> {
     `\nRunning diagnostics for ${sampleDate} → ${outputDir}\n`,
   );
 
-  // Get the singleton database handle (already open from the import pipeline)
   const db = getDb();
-
-  // Add departure_time_seconds / arrival_time_seconds GENERATED columns if
-  // this version of node-gtfs did not create them during import.
   ensureTimeCols(db);
 
-  // Resolve service_ids for the sample date
   const serviceIds = resolveServiceIds(db, sampleDate);
   process.stdout.write(
     `Active service_ids for ${sampleDate}: ${serviceIds.size} found\n`,
@@ -108,13 +100,11 @@ export async function runDiagnostics(config: Config): Promise<string> {
     );
   }
 
-  // Parse time bands
   const timeBands = parseTimeBands(config);
   process.stdout.write(
     `Time bands: ${timeBands.map((b) => b.label).join(', ')}\n`,
   );
 
-  // Resolve zone filter
   const zone = resolveZoneFilter(db, config);
   if (zone.routeIds !== null) {
     process.stdout.write(`Zone filter: ${zone.routeIds.length} routes\n`);
@@ -126,8 +116,9 @@ export async function runDiagnostics(config: Config): Promise<string> {
   // Diagnostic 1: Hidden trunk frequency
   // -------------------------------------------------------------------------
   process.stdout.write('\n[1/5] Hidden trunk frequency...\n');
+  let hiddenTrunkResults: HiddenTrunkResult[] = [];
   try {
-    const results = await runHiddenTrunkDiagnostic(
+    hiddenTrunkResults = await runHiddenTrunkDiagnostic(
       db,
       config,
       outputDir,
@@ -136,9 +127,9 @@ export async function runDiagnostics(config: Config): Promise<string> {
       timeBands,
       zone,
     );
-    const flagged = results.filter((r) => r.flagged).length;
+    const flagged = hiddenTrunkResults.filter((r) => r.flagged).length;
     process.stdout.write(
-      `     → ${results.length} segments analysed, ${flagged} candidate trunks flagged\n`,
+      `     → ${hiddenTrunkResults.length} segments analysed, ${flagged} candidate trunks flagged\n`,
     );
   } catch (err: any) {
     process.stderr.write(`     ERROR: ${err.message}\n`);
@@ -148,8 +139,9 @@ export async function runDiagnostics(config: Config): Promise<string> {
   // Diagnostic 2: Branch dilution
   // -------------------------------------------------------------------------
   process.stdout.write('\n[2/5] Branch dilution...\n');
+  let branchDilutionResults: BranchDilutionResult[] = [];
   try {
-    const results = await runBranchDilutionDiagnostic(
+    branchDilutionResults = await runBranchDilutionDiagnostic(
       db,
       config,
       outputDir,
@@ -158,17 +150,16 @@ export async function runDiagnostics(config: Config): Promise<string> {
       timeBands,
       zone,
     );
-    const flagged = results.filter((r) => r.flagged).length;
+    const flagged = branchDilutionResults.filter((r) => r.flagged).length;
     process.stdout.write(
-      `     → ${results.length} route+dir+band rows, ${flagged} dilution cases flagged\n`,
+      `     → ${branchDilutionResults.length} route+dir+band rows, ${flagged} dilution cases flagged\n`,
     );
   } catch (err: any) {
     process.stderr.write(`     ERROR: ${err.message}\n`);
   }
 
   // -------------------------------------------------------------------------
-  // Diagnostic 3: Rail–bus connection matrix
-  // Only runs if diagnosticsRailFeedSqlitePath is configured.
+  // Diagnostic 3: Rail–bus connection matrix (only if rail DB configured)
   // -------------------------------------------------------------------------
   process.stdout.write('\n[3/5] Rail–bus connection matrix...\n');
   if (config.diagnosticsRailFeedSqlitePath) {
@@ -190,9 +181,10 @@ export async function runDiagnostics(config: Config): Promise<string> {
   // -------------------------------------------------------------------------
   // Scaffold: Span legibility
   // -------------------------------------------------------------------------
-  process.stdout.write('\n[4/5] Span legibility (scaffold)...\n');
+  process.stdout.write('\n[4/5] Span legibility...\n');
+  let spanResults: SpanLegibilityResult[] = [];
   try {
-    const results = await runSpanLegibility(
+    spanResults = await runSpanLegibility(
       db,
       config,
       outputDir,
@@ -201,7 +193,7 @@ export async function runDiagnostics(config: Config): Promise<string> {
       timeBands,
       zone,
     );
-    process.stdout.write(`     → ${results.length} route+direction rows\n`);
+    process.stdout.write(`     → ${spanResults.length} route+direction rows\n`);
   } catch (err: any) {
     process.stderr.write(`     ERROR: ${err.message}\n`);
   }
@@ -209,9 +201,10 @@ export async function runDiagnostics(config: Config): Promise<string> {
   // -------------------------------------------------------------------------
   // Scaffold: Circuity
   // -------------------------------------------------------------------------
-  process.stdout.write('\n[5/5] Circuity (scaffold)...\n');
+  process.stdout.write('\n[5/5] Circuity...\n');
+  let circuityResults: CircuityResult[] = [];
   try {
-    const results = await runCircuity(
+    circuityResults = await runCircuity(
       db,
       config,
       outputDir,
@@ -219,16 +212,166 @@ export async function runDiagnostics(config: Config): Promise<string> {
       serviceIds,
       zone,
     );
-    const flagged = results.filter((r) => r.flagged).length;
+    const flagged = circuityResults.filter((r) => r.flagged).length;
     process.stdout.write(
-      `     → ${results.length} routes, ${flagged} flagged (ratio > 2.0)\n`,
+      `     → ${circuityResults.length} routes, ${flagged} flagged\n`,
     );
   } catch (err: any) {
     process.stderr.write(`     ERROR: ${err.message}\n`);
   }
 
+  // -------------------------------------------------------------------------
+  // Generate HTML report
+  // -------------------------------------------------------------------------
+  process.stdout.write('\nGenerating HTML report...\n');
+  try {
+    const html = await generateDiagnosticsHTML({
+      config,
+      outputDir,
+      sampleDate,
+      hiddenTrunkResults,
+      branchDilutionResults,
+      spanResults,
+      circuityResults,
+    });
+    await writeFile(path.join(outputDir, 'index.html'), html);
+    process.stdout.write(`     → diagnostics/index.html written\n`);
+  } catch (err: any) {
+    process.stderr.write(`     HTML generation ERROR: ${err.message}\n`);
+  }
+
   process.stdout.write(`\nDiagnostics complete → ${outputDir}\n`);
   return outputDir;
+}
+
+/**
+ * Generate a single-page HTML diagnostics report from collected results.
+ * The page is structured as four collapsible sections (one per diagnostic)
+ * with interactive route-filter checkboxes and an embedded MapLibre map
+ * for the hidden trunk section.
+ */
+async function generateDiagnosticsHTML(opts: {
+  config: Config;
+  outputDir: string;
+  sampleDate: string;
+  hiddenTrunkResults: HiddenTrunkResult[];
+  branchDilutionResults: BranchDilutionResult[];
+  spanResults: SpanLegibilityResult[];
+  circuityResults: CircuityResult[];
+}): Promise<string> {
+  const {
+    config,
+    outputDir,
+    sampleDate,
+    hiddenTrunkResults,
+    branchDilutionResults,
+    spanResults,
+    circuityResults,
+  } = opts;
+
+  // Load hidden trunk GeoJSON for the map (already written by the diagnostic)
+  let hiddenTrunkGeojson: object | undefined;
+  if (config.showMap) {
+    try {
+      const raw = await readFile(
+        path.join(outputDir, 'hidden_trunk.geojson'),
+        'utf8',
+      );
+      hiddenTrunkGeojson = JSON.parse(raw);
+    } catch {
+      // GeoJSON absent if 0 flagged segments — map section will be skipped
+    }
+  }
+
+  const agencies = getAgencies() as { agency_name: string }[];
+
+  // Top flagged results for each section (sorted best-first for tables)
+  const topHiddenTrunk = hiddenTrunkResults
+    .filter((r) => r.flagged)
+    .sort((a, b) => b.combined_trips_per_hour - a.combined_trips_per_hour)
+    .slice(0, 30);
+
+  const topBranchDilution = branchDilutionResults
+    .filter((r) => r.flagged)
+    .sort((a, b) => b.dilution_ratio - a.dilution_ratio)
+    .slice(0, 30);
+
+  const topCircuity = circuityResults
+    .filter((r) => r.flagged)
+    .sort((a, b) => b.circuity_ratio - a.circuity_ratio)
+    .slice(0, 30);
+
+  // Unique route IDs per section — used to build filter checkboxes.
+  // For hidden trunk: collect from contributing_route_ids field.
+  const hiddenTrunkRouteIds = [
+    ...new Set(
+      topHiddenTrunk.flatMap((r) =>
+        r.contributing_route_ids.split(' | ').filter(Boolean),
+      ),
+    ),
+  ].sort();
+
+  // For branch dilution: route_id per row
+  const branchDilutionRouteIds = [
+    ...new Set(topBranchDilution.map((r) => r.route_short_name || r.route_id)),
+  ].sort();
+
+  // For span legibility: all route short names
+  const spanRouteIds = [
+    ...new Set(spanResults.map((r) => r.route_short_name || r.route_id)),
+  ].sort();
+
+  // For circuity: flagged routes
+  const circuityRouteIds = [
+    ...new Set(topCircuity.map((r) => r.route_short_name || r.route_id)),
+  ].sort();
+
+  // assetPath must point from diagnostics/ to the parent output dir where CSS/JS live.
+  // noHead must be false so renderTemplate selects diagnostics_index_full.pug.
+  const diagnosticsConfig = {
+    ...config,
+    assetPath: config.assetPath ?? '../',
+    noHead: false,
+  };
+
+  const templateVars = {
+    config: diagnosticsConfig,
+    title:
+      config.brandingTitle ??
+      `${agencies.map((a) => a.agency_name).join(' & ')} — Network Diagnostics`,
+    agencies,
+    sampleDate,
+    hiddenTrunk: {
+      results: topHiddenTrunk,
+      allResults: hiddenTrunkResults,
+      flaggedCount: hiddenTrunkResults.filter((r) => r.flagged).length,
+      totalSegments: hiddenTrunkResults.length,
+      geojson: hiddenTrunkGeojson,
+      uniqueRouteIds: hiddenTrunkRouteIds,
+      threshold: config.diagnosticsHiddenTrunkMinTripsPerHour ?? 6,
+    },
+    branchDilution: {
+      results: topBranchDilution,
+      flaggedCount: branchDilutionResults.filter((r) => r.flagged).length,
+      totalRows: branchDilutionResults.length,
+      uniqueRouteIds: branchDilutionRouteIds,
+      ratioThreshold: config.diagnosticsBranchDilutionRatioThreshold ?? 1.5,
+      minTrunkTph: config.diagnosticsBranchDilutionMinTrunkTph ?? 1.0,
+    },
+    spanLegibility: {
+      results: spanResults,
+      uniqueRouteIds: spanRouteIds,
+    },
+    circuity: {
+      results: topCircuity,
+      flaggedCount: circuityResults.filter((r) => r.flagged).length,
+      totalRoutes: circuityResults.length,
+      uniqueRouteIds: circuityRouteIds,
+      threshold: config.diagnosticsCircuityFlagThreshold ?? 2.0,
+    },
+  };
+
+  return renderTemplate('diagnostics_index', templateVars, diagnosticsConfig);
 }
 
 export { runHiddenTrunkDiagnostic } from './hidden-trunk.js';

@@ -83,7 +83,11 @@ export interface Config {
     stopIds?: string[];
     boundingBox?: [number, number, number, number]; // [minLon, minLat, maxLon, maxLat]
   };
-  diagnosticsHiddenTrunkMinTripsPerHour?: number; // flag threshold (default 6 = every 10 min)
+  diagnosticsHiddenTrunkMinTripsPerHour?: number; // combined tph flag threshold (default 6 = every 10 min)
+  diagnosticsBranchDilutionRatioThreshold?: number; // trunk/branch tph ratio flag threshold (default 1.5)
+  diagnosticsBranchDilutionMinTrunkTph?: number; // minimum trunk tph required to flag dilution (default 1.0)
+  diagnosticsCircuityFlagThreshold?: number; // path/straight-line ratio above which route is flagged (default 2.0)
+  diagnosticsCircuityMinStraightLineKm?: number; // routes below this are treated as circular loops (default 0.2)
   diagnosticsRailFeedSqlitePath?: string; // path to rail DB for rail-bus matrix diagnostic
   diagnosticsMaxTransferWaitMinutes?: number; // flag threshold for rail-bus waits (default 20)
 }

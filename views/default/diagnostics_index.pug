@@ -1,0 +1,313 @@
+-
+  // Helper: render a trip-per-hour value as a colour-coded badge class
+  function tphClass(tph) {
+    if (tph >= 6) return 'tph-badge tph-badge--high';
+    if (tph >= 3) return 'tph-badge tph-badge--medium';
+    return 'tph-badge tph-badge--low';
+  }
+
+  // Helper: build a data-routes attr value from a pipe-separated route_id string
+  function routeData(routeIdsCsv) {
+    return routeIdsCsv || '';
+  }
+
+.diagnostics-page
+  header.diagnostics-header
+    if config.brandingLogo
+      img.diagnostics-header__logo(src=config.brandingLogo alt="")
+    h1.diagnostics-header__title= title
+    .diagnostics-header__meta
+      span Sample date:&nbsp;
+      strong= sampleDate
+      if agencies && agencies.length
+        span &nbsp;·&nbsp;
+        span= agencies.map(a => a.agency_name).join(' & ')
+
+  //- ─────────────────────────────────────────────────────────────────────────
+  //- SECTION 1: Hidden trunk frequency
+  //- ─────────────────────────────────────────────────────────────────────────
+  section.diagnostic-section(id="hidden-trunk")
+    .diagnostic-section__header
+      h2 1. Hidden Trunk Frequency
+      .diagnostic-section__badge
+        if hiddenTrunk.flaggedCount > 0
+          span.section-badge.section-badge--new #{hiddenTrunk.flaggedCount} flagged corridors
+        else
+          span.section-badge.section-badge--unchanged No corridors flagged
+    p.diagnostic-section__desc
+      | Segments where the combined frequency of multiple overlapping routes reaches
+      | the threshold (≥#{hiddenTrunk.threshold} tph) but no single route does.
+      | These are latent trunks the redesign could consolidate.
+    p.diagnostic-section__meta
+      | #{hiddenTrunk.totalSegments} stop-pair segments analysed
+      | · threshold: #{hiddenTrunk.threshold} tph (every #{Math.round(60/hiddenTrunk.threshold)} min)
+
+    if hiddenTrunk.uniqueRouteIds && hiddenTrunk.uniqueRouteIds.length > 0
+      .route-filter-bar(data-target="hidden-trunk-table")
+        span.route-filter-bar__label Filter by route:
+        button.route-filter-bar__btn(type="button" data-action="all") All
+        button.route-filter-bar__btn(type="button" data-action="none") None
+        each routeId in hiddenTrunk.uniqueRouteIds
+          label.route-toggle
+            input(type="checkbox" checked data-route=routeId)
+            span= routeId
+
+    if hiddenTrunk.results && hiddenTrunk.results.length > 0
+      .diagnostic-table-wrap
+        table.diagnostic-table(id="hidden-trunk-table")
+          thead
+            tr
+              th From stop
+              th To stop
+              th Band
+              th
+                abbr(title="Combined trips per hour across all routes") Combined tph
+              th
+                abbr(title="Highest single-route trips per hour on this segment") Max single tph
+              th Routes
+          tbody
+            each row in hiddenTrunk.results
+              tr(data-routes=row.contributing_route_ids)
+                td= row.from_stop_name
+                td= row.to_stop_name
+                td= row.time_band
+                td
+                  span(class=tphClass(row.combined_trips_per_hour))= row.combined_trips_per_hour
+                td= row.max_single_route_trips_per_hour
+                td.routes-cell= row.contributing_routes
+    else
+      p.diagnostic-empty No flagged trunk segments for this date and threshold.
+
+    if config.showMap && hiddenTrunk.geojson
+      .diagnostic-section__map-label Map: segments coloured by combined trips/hour
+      #hidden-trunk-map.diagnostic-section__map
+      script.
+        (function() {
+          const geojson = !{JSON.stringify(hiddenTrunk.geojson)};
+          const mapStyleUrl = '#{config.mapStyleUrl || ""}';
+
+          if (!maplibregl) return;
+
+          const map = new maplibregl.Map({
+            container: 'hidden-trunk-map',
+            style: mapStyleUrl || {
+              version: 8,
+              sources: {
+                osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256 }
+              },
+              layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
+            },
+            bounds: (() => {
+              const coords = geojson.features.flatMap(f => f.geometry.coordinates);
+              if (!coords.length) return undefined;
+              const lons = coords.map(c => c[0]), lats = coords.map(c => c[1]);
+              return [[Math.min(...lons)-0.01, Math.min(...lats)-0.01],
+                      [Math.max(...lons)+0.01, Math.max(...lats)+0.01]];
+            })()
+          });
+
+          map.on('load', function() {
+            map.addSource('trunk', { type: 'geojson', data: geojson });
+
+            // All segments (unflagged, low frequency) — thin grey
+            map.addLayer({
+              id: 'trunk-base',
+              type: 'line',
+              source: 'trunk',
+              filter: ['==', ['get', 'flagged'], false],
+              paint: { 'line-color': '#aaa', 'line-width': 1.5, 'line-opacity': 0.4 }
+            });
+
+            // Flagged segments — coloured by combined tph
+            map.addLayer({
+              id: 'trunk-flagged',
+              type: 'line',
+              source: 'trunk',
+              filter: ['==', ['get', 'flagged'], true],
+              paint: {
+                'line-color': [
+                  'interpolate', ['linear'], ['get', 'combined_trips_per_hour'],
+                  6,  '#f7bc00',
+                  12, '#f08700',
+                  20, '#d72222'
+                ],
+                'line-width': [
+                  'interpolate', ['linear'], ['get', 'combined_trips_per_hour'],
+                  6, 2, 20, 6
+                ],
+                'line-opacity': 0.85
+              }
+            });
+
+            // Popup on hover
+            const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+            map.on('mouseenter', 'trunk-flagged', function(e) {
+              map.getCanvas().style.cursor = 'pointer';
+              const p = e.features[0].properties;
+              popup.setLngLat(e.lngLat)
+                .setHTML(
+                  '<strong>' + p.from_stop_name + ' → ' + p.to_stop_name + '</strong>' +
+                  '<br>' + p.time_band + ': <b>' + p.combined_trips_per_hour + ' tph</b>' +
+                  '<br>' + p.contributing_routes
+                )
+                .addTo(map);
+            });
+            map.on('mouseleave', 'trunk-flagged', function() {
+              map.getCanvas().style.cursor = '';
+              popup.remove();
+            });
+
+            // Store reference for route filter JS
+            window.__trunkMap = map;
+          });
+        })();
+
+  //- ─────────────────────────────────────────────────────────────────────────
+  //- SECTION 2: Branch dilution
+  //- ─────────────────────────────────────────────────────────────────────────
+  section.diagnostic-section(id="branch-dilution")
+    .diagnostic-section__header
+      h2 2. Branch Dilution
+      .diagnostic-section__badge
+        if branchDilution.flaggedCount > 0
+          span.section-badge.section-badge--modified #{branchDilution.flaggedCount} dilution cases
+        else
+          span.section-badge.section-badge--unchanged No dilution flagged
+    p.diagnostic-section__desc
+      | Routes whose trips diverge into branches, collapsing a usable trunk headway
+      | into unusable branch headways. Shows only cases where trunk ≥ #{branchDilution.minTrunkTph} tph
+      | and trunk/branch ratio > #{branchDilution.ratioThreshold}.
+
+    if branchDilution.uniqueRouteIds && branchDilution.uniqueRouteIds.length > 0
+      .route-filter-bar(data-target="branch-dilution-table")
+        span.route-filter-bar__label Filter by route:
+        button.route-filter-bar__btn(type="button" data-action="all") All
+        button.route-filter-bar__btn(type="button" data-action="none") None
+        each routeId in branchDilution.uniqueRouteIds
+          label.route-toggle
+            input(type="checkbox" checked data-route=routeId)
+            span= routeId
+
+    if branchDilution.results && branchDilution.results.length > 0
+      .diagnostic-table-wrap
+        table.diagnostic-table(id="branch-dilution-table")
+          thead
+            tr
+              th Route
+              th Dir
+              th Band
+              th Trunk tph
+              th Min branch tph
+              th Dilution ratio
+              th Branch endpoints
+          tbody
+            each row in branchDilution.results
+              tr(data-routes=row.route_short_name || row.route_id)
+                td
+                  span.route-badge= row.route_short_name || row.route_id
+                td= row.direction_id
+                td= row.time_band
+                td
+                  span(class=tphClass(row.trunk_tph))= row.trunk_tph
+                td= row.min_branch_tph
+                td
+                  if row.dilution_ratio >= 9999
+                    span.tph-badge.tph-badge--low ∞ (branch has 0 tph)
+                  else
+                    span= row.dilution_ratio + '×'
+                td.routes-cell= row.branch_endpoint_names
+    else
+      p.diagnostic-empty No branch dilution cases for this date and thresholds.
+
+  //- ─────────────────────────────────────────────────────────────────────────
+  //- SECTION 3: Span legibility
+  //- ─────────────────────────────────────────────────────────────────────────
+  section.diagnostic-section(id="span-legibility")
+    .diagnostic-section__header
+      h2 3. Span Legibility
+    p.diagnostic-section__desc
+      | First and last departure, trip count, and midday headway per route and direction.
+      | Routes with a single trip (or gaps > 2 h at midday) are easy to identify here.
+
+    if spanLegibility.uniqueRouteIds && spanLegibility.uniqueRouteIds.length > 0
+      .route-filter-bar(data-target="span-legibility-table")
+        span.route-filter-bar__label Filter by route:
+        button.route-filter-bar__btn(type="button" data-action="all") All
+        button.route-filter-bar__btn(type="button" data-action="none") None
+        each routeId in spanLegibility.uniqueRouteIds
+          label.route-toggle
+            input(type="checkbox" checked data-route=routeId)
+            span= routeId
+
+    if spanLegibility.results && spanLegibility.results.length > 0
+      .diagnostic-table-wrap
+        table.diagnostic-table(id="span-legibility-table")
+          thead
+            tr
+              th Route
+              th Dir
+              th First dep.
+              th Last dep.
+              th Trips
+              th Midday hdwy (min)
+          tbody
+            each row in spanLegibility.results
+              tr(data-routes=row.route_short_name || row.route_id)
+                td
+                  span.route-badge= row.route_short_name || row.route_id
+                td= row.direction_id
+                td= row.first_departure
+                td= row.last_departure
+                td= row.trip_count
+                td= row.midday_headway_min != null ? row.midday_headway_min : '—'
+    else
+      p.diagnostic-empty No span data available.
+
+  //- ─────────────────────────────────────────────────────────────────────────
+  //- SECTION 4: Circuity
+  //- ─────────────────────────────────────────────────────────────────────────
+  section.diagnostic-section(id="circuity")
+    .diagnostic-section__header
+      h2 4. Circuity
+      .diagnostic-section__badge
+        if circuity.flaggedCount > 0
+          span.section-badge.section-badge--modified #{circuity.flaggedCount} circuitous routes
+        else
+          span.section-badge.section-badge--unchanged No routes flagged
+    p.diagnostic-section__desc
+      | Ratio of route path length to straight-line distance (first → last stop).
+      | Values above #{circuity.threshold}× suggest unnecessary detours. Circular/loop routes excluded.
+
+    if circuity.uniqueRouteIds && circuity.uniqueRouteIds.length > 0
+      .route-filter-bar(data-target="circuity-table")
+        span.route-filter-bar__label Filter by route:
+        button.route-filter-bar__btn(type="button" data-action="all") All
+        button.route-filter-bar__btn(type="button" data-action="none") None
+        each routeId in circuity.uniqueRouteIds
+          label.route-toggle
+            input(type="checkbox" checked data-route=routeId)
+            span= routeId
+
+    if circuity.results && circuity.results.length > 0
+      .diagnostic-table-wrap
+        table.diagnostic-table(id="circuity-table")
+          thead
+            tr
+              th Route
+              th Stops
+              th Path (km)
+              th Straight (km)
+              th Circuity ratio
+          tbody
+            each row in circuity.results
+              tr(data-routes=row.route_short_name || row.route_id)
+                td
+                  span.route-badge= row.route_short_name || row.route_id
+                td= row.stop_count
+                td= row.path_length_km
+                td= row.straight_line_km
+                td
+                  span.tph-badge(class=row.circuity_ratio > 3 ? 'tph-badge--low' : 'tph-badge--medium')
+                    = row.circuity_ratio + '×'
+    else
+      p.diagnostic-empty No circuity data or no routes flagged.
