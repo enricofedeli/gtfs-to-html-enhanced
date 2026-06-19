@@ -321,7 +321,11 @@ export async function runBranchDilutionDiagnostic(
       const minBranchTph = Math.min(...branchTphs);
       const maxBranchTph = Math.max(...branchTphs);
       const dilutionRatio = minBranchTph > 0 ? trunkTph / minBranchTph : 9999;
-      const flagged = dilutionRatio > dilutionThreshold;
+      // Only flag when the trunk itself is meaningful (>=1 tph = at least every hour).
+      // Low-frequency rural routes with 0.3 tph trunk are not "diluted" — they just
+      // have sparse service overall.  The 9999 sentinel still correctly captures
+      // "trunk runs, some branch doesn't" when trunk >= 1 tph.
+      const flagged = trunkTph >= 1.0 && dilutionRatio > dilutionThreshold;
 
       results.push({
         route_id: group.routeId,

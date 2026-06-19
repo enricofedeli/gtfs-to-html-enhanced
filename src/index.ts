@@ -23,3 +23,5 @@ export type {
   FormattedTimetable,
   FormattedTimetablePage,
 } from './types/index.js';
+
+export { runDiagnostics } from './lib/diagnostics/index.js';

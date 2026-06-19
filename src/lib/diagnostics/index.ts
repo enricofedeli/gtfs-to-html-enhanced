@@ -42,6 +42,7 @@ import {
   parseTimeBands,
   resolveZoneFilter,
   getDb,
+  ensureTimeCols,
 } from './db-utils.js';
 import { makeOutputDir } from './output-utils.js';
 import { runHiddenTrunkDiagnostic } from './hidden-trunk.js';
@@ -88,6 +89,10 @@ export async function runDiagnostics(config: Config): Promise<string> {
 
   // Get the singleton database handle (already open from the import pipeline)
   const db = getDb();
+
+  // Add departure_time_seconds / arrival_time_seconds GENERATED columns if
+  // this version of node-gtfs did not create them during import.
+  ensureTimeCols(db);
 
   // Resolve service_ids for the sample date
   const serviceIds = resolveServiceIds(db, sampleDate);

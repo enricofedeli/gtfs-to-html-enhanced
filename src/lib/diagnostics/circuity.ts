@@ -166,7 +166,11 @@ export async function runCircuity(
       last.stop_lon,
     );
 
-    const ratio = straightKm > 0 ? pathKm / straightKm : 9999;
+    // Circular routes (first stop ≈ last stop, straight-line < 200 m) are excluded
+    // from circuity flagging: the metric is undefined for loop routes and produces
+    // very large ratios (path_km / ~0) that flood the top-20 list.
+    const isCircular = straightKm < 0.2;
+    const ratio = !isCircular && straightKm > 0 ? pathKm / straightKm : 9999;
 
     results.push({
       route_id: rep.route_id,
@@ -174,8 +178,8 @@ export async function runCircuity(
       stop_count: stopCoords.length,
       path_length_km: Math.round(pathKm * 10) / 10,
       straight_line_km: Math.round(straightKm * 10) / 10,
-      circuity_ratio: Math.round(ratio * 100) / 100,
-      flagged: ratio > CIRCUITY_FLAG_THRESHOLD,
+      circuity_ratio: isCircular ? 0 : Math.round(ratio * 100) / 100,
+      flagged: !isCircular && ratio > CIRCUITY_FLAG_THRESHOLD,
     });
   }
 

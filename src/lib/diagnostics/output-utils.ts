@@ -21,7 +21,7 @@ export async function writeCsv(
     await writeFile(filePath, '');
     return;
   }
-  const headers = Object.keys(rows[0]);
+  const headers = Object.keys(rows[0] as object);
   const escape = (v: unknown): string => {
     const s = v == null ? '' : String(v);
     if (s.includes(',') || s.includes('"') || s.includes('\n')) {
@@ -31,7 +31,9 @@ export async function writeCsv(
   };
   const lines = [
     headers.join(','),
-    ...rows.map((r) => headers.map((h) => escape(r[h])).join(',')),
+    ...(rows as Record<string, unknown>[]).map((r) =>
+      headers.map((h) => escape(r[h])).join(','),
+    ),
   ];
   await writeFile(filePath, lines.join('\n') + '\n');
 }
@@ -121,7 +123,7 @@ export function summaryHeader(
 export async function writeStandardOutputs(
   outputDir: string,
   prefix: string,
-  rows: Record<string, unknown>[],
+  rows: object[],
   summaryText: string,
 ): Promise<void> {
   await Promise.all([

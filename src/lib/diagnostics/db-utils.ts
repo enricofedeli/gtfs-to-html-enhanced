@@ -201,6 +201,74 @@ export function resolveZoneFilter(db: any, config: Config): ZoneFilter {
 }
 
 /**
+ * Ensure that time-in-seconds GENERATED columns exist on the relevant GTFS tables.
+ *
+ * Some versions of node-gtfs create these automatically (departure_time_seconds,
+ * arrival_time_seconds on stop_times; start_time_seconds / end_time_seconds on
+ * frequencies).  Older imports omit them.  We add them via ALTER TABLE if absent,
+ * using SQLite 3.31+ GENERATED ALWAYS AS expressions that correctly handle
+ * after-midnight GTFS times (e.g. "25:30:00" → 91800 s).
+ *
+ * This is idempotent: if the column already exists the ALTER TABLE is skipped.
+ */
+export function ensureTimeCols(db: any): void {
+  // Helper: parse "HH:MM:SS" field into seconds-after-service-day.
+  // Handles GTFS after-midnight times (e.g. "25:30:00" → 91800 s).
+  const timeExpr = (col: string) =>
+    `(CAST(SUBSTR(${col},1,2) AS INTEGER)*3600 +` +
+    ` CAST(SUBSTR(${col},4,2) AS INTEGER)*60 +` +
+    ` CAST(SUBSTR(${col},7,2) AS INTEGER))`;
+
+  // SQLite's PRAGMA table_info does not reliably report VIRTUAL generated columns
+  // (they have hidden=3 but may be omitted in some builds).  We instead probe with
+  // a cheap SELECT — if the column is absent, SQLite throws, and we add it.
+  const hasCol = (table: string, col: string): boolean => {
+    try {
+      db.prepare(`SELECT ${col} FROM ${table} LIMIT 0`).run();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  if (!hasCol('stop_times', 'departure_time_seconds')) {
+    db.prepare(
+      `ALTER TABLE stop_times ADD COLUMN departure_time_seconds INTEGER ` +
+        `GENERATED ALWAYS AS (${timeExpr('departure_time')}) VIRTUAL`,
+    ).run();
+  }
+
+  if (!hasCol('stop_times', 'arrival_time_seconds')) {
+    db.prepare(
+      `ALTER TABLE stop_times ADD COLUMN arrival_time_seconds INTEGER ` +
+        `GENERATED ALWAYS AS (${timeExpr('arrival_time')}) VIRTUAL`,
+    ).run();
+  }
+
+  // frequencies table is optional
+  if (
+    db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='frequencies'",
+      )
+      .get()
+  ) {
+    if (!hasCol('frequencies', 'start_time_seconds')) {
+      db.prepare(
+        `ALTER TABLE frequencies ADD COLUMN start_time_seconds INTEGER ` +
+          `GENERATED ALWAYS AS (${timeExpr('start_time')}) VIRTUAL`,
+      ).run();
+    }
+    if (!hasCol('frequencies', 'end_time_seconds')) {
+      db.prepare(
+        `ALTER TABLE frequencies ADD COLUMN end_time_seconds INTEGER ` +
+          `GENERATED ALWAYS AS (${timeExpr('end_time')}) VIRTUAL`,
+      ).run();
+    }
+  }
+}
+
+/**
  * Check whether a given table exists in the currently-open SQLite database.
  * Useful for gracefully degrading when optional GTFS tables (frequencies, shapes,
  * transfers) are absent from the feed.
@@ -267,9 +335,7 @@ export function getFrequencyMultiplier(
  * Load all frequency rows from the database, indexed by trip_id.
  * Returns an empty Map if the frequencies table does not exist.
  */
-export function loadFrequencyRowsByTrip(
-  db: any,
-): Map<
+export function loadFrequencyRowsByTrip(db: any): Map<
   string,
   {
     start_time_seconds: number;
