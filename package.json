@@ -45,11 +45,15 @@
   "scripts": {
     "build": "tsup && node scripts/copy-browser-assets.js",
     "start": "node ./dist/app",
+    "test": "vitest run",
     "prepare": "husky && pnpm run build",
     "prepack": "husky && pnpm run build"
   },
   "dependencies": {
     "@turf/helpers": "^7.3.5",
+    "@turf/length": "^7.3.5",
+    "@turf/line-slice": "^7.3.5",
+    "@turf/nearest-point-on-line": "^7.3.5",
     "@turf/simplify": "^7.3.5",
     "archiver": "^8.0.0",
     "cli-table": "^0.3.11",
@@ -84,6 +88,7 @@
     "@types/sqlstring": "^2.3.2",
     "@types/toposort": "^2.0.7",
     "@types/yargs": "^17.0.35",
+    "@vitest/coverage-v8": "^4.1.9",
     "anchorme": "^3.0.8",
     "gtfs-realtime-pbf-js-module": "^1.0.0",
     "husky": "^9.1.7",
@@ -92,7 +97,8 @@
     "pbf": "^5.0.0",
     "prettier": "^3.8.3",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
   },
   "engines": {
     "node": ">= 22"

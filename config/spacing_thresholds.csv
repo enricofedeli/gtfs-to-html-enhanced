@@ -1,0 +1,4 @@
+line_type,target_spacing_m,flag_below_m,max_gap_after_removal_m
+urban,300,250,450
+suburban,450,360,700
+extraurban,650,520,1000

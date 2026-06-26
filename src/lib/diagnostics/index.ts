@@ -35,6 +35,7 @@ import type { SegmentResult as HiddenTrunkResult } from './hidden-trunk.js';
 import type { BranchDilutionResult } from './branch-dilution.js';
 import type { SpanLegibilityResult } from './span-legibility.js';
 import type { CircuityResult } from './circuity.js';
+import type { ConsolidationResult } from './stop-consolidation.js';
 import {
   resolveServiceIds,
   parseTimeBands,
@@ -49,6 +50,7 @@ import { runBranchDilutionDiagnostic } from './branch-dilution.js';
 import { runRailBusMatrix } from './rail-bus-matrix.js';
 import { runSpanLegibility } from './span-legibility.js';
 import { runCircuity } from './circuity.js';
+import { runStopConsolidation } from './stop-consolidation.js';
 
 /**
  * Run all enabled diagnostics for the provided config.
@@ -221,6 +223,48 @@ export async function runDiagnostics(config: Config): Promise<string> {
   }
 
   // -------------------------------------------------------------------------
+  // Diagnostic 6: Stop consolidation
+  // -------------------------------------------------------------------------
+  process.stdout.write('\n[6/6] Stop consolidation...\n');
+  let consolidationResult: ConsolidationResult = {
+    candidates: [],
+    flaggedCount: 0,
+    totalSegments: 0,
+    uniqueRouteIds: [],
+    geojson: undefined,
+  };
+  if (config.diagnosticsStopConsolidationEnabled !== false) {
+    try {
+      // Build trunk segment set for cross-link boost
+      const trunkSegments = new Set<string>(
+        hiddenTrunkResults
+          .filter((r) => r.flagged)
+          .map((r) => `${r.from_stop_id}|${r.to_stop_id}`),
+      );
+      consolidationResult = await runStopConsolidation(
+        db,
+        config,
+        outputDir,
+        sampleDate,
+        serviceIds,
+        timeBands,
+        zone,
+        trunkSegments,
+      );
+      process.stdout.write(
+        `     → ${consolidationResult.candidates.length} candidates` +
+          ` (${consolidationResult.flaggedCount} actionable removal)\n`,
+      );
+    } catch (err: any) {
+      process.stderr.write(`     ERROR: ${err.message}\n`);
+    }
+  } else {
+    process.stdout.write(
+      '     SKIPPED (set diagnosticsStopConsolidationEnabled: true to enable)\n',
+    );
+  }
+
+  // -------------------------------------------------------------------------
   // Generate HTML report
   // -------------------------------------------------------------------------
   process.stdout.write('\nGenerating HTML report...\n');
@@ -233,6 +277,7 @@ export async function runDiagnostics(config: Config): Promise<string> {
       branchDilutionResults,
       spanResults,
       circuityResults,
+      consolidationResult,
     });
     await writeFile(path.join(outputDir, 'index.html'), html);
     process.stdout.write(`     → diagnostics/index.html written\n`);
@@ -258,6 +303,7 @@ async function generateDiagnosticsHTML(opts: {
   branchDilutionResults: BranchDilutionResult[];
   spanResults: SpanLegibilityResult[];
   circuityResults: CircuityResult[];
+  consolidationResult: ConsolidationResult;
 }): Promise<string> {
   const {
     config,
@@ -267,6 +313,7 @@ async function generateDiagnosticsHTML(opts: {
     branchDilutionResults,
     spanResults,
     circuityResults,
+    consolidationResult,
   } = opts;
 
   // Load hidden trunk GeoJSON for the map (already written by the diagnostic)
@@ -369,6 +416,14 @@ async function generateDiagnosticsHTML(opts: {
       uniqueRouteIds: circuityRouteIds,
       threshold: config.diagnosticsCircuityFlagThreshold ?? 2.0,
     },
+    stopConsolidation: {
+      results: consolidationResult.candidates.slice(0, 50),
+      flaggedCount: consolidationResult.flaggedCount,
+      totalSegments: consolidationResult.totalSegments,
+      uniqueRouteIds: consolidationResult.uniqueRouteIds,
+      geojson: consolidationResult.geojson,
+      enabled: config.diagnosticsStopConsolidationEnabled !== false,
+    },
   };
 
   return renderTemplate('diagnostics_index', templateVars, diagnosticsConfig);
@@ -379,3 +434,4 @@ export { runBranchDilutionDiagnostic } from './branch-dilution.js';
 export { runRailBusMatrix } from './rail-bus-matrix.js';
 export { runSpanLegibility } from './span-legibility.js';
 export { runCircuity } from './circuity.js';
+export { runStopConsolidation } from './stop-consolidation.js';

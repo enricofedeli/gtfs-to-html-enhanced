@@ -258,6 +258,91 @@
   font-size: 0.8rem;
 }
 
+/* ── Stop consolidation badges ───────────────────────────── */
+
+.sc-badge {
+  display: inline-block;
+  padding: 0.12em 0.45em;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sc-badge--removal {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.sc-badge--fusion {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.sc-badge--excluded {
+  background: #e9ecef;
+  color: #6c757d;
+}
+
+/* ── Walk distance indicators ────────────────────────────── */
+
+.walk-ok {
+  color: #155724;
+  font-weight: 600;
+}
+
+.walk-severed {
+  color: #721c24;
+  font-weight: 700;
+}
+
+.walk-na {
+  color: #aaa;
+}
+
+/* ── Protection and trunk tags ───────────────────────────── */
+
+.protected-tag {
+  display: inline-block;
+  padding: 0.08em 0.35em;
+  background: #cce5ff;
+  color: #004085;
+  border-radius: 3px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin-left: 0.25rem;
+}
+
+.trunk-flag-tag {
+  display: inline-block;
+  padding: 0.08em 0.35em;
+  background: #d4edda;
+  color: #155724;
+  border-radius: 3px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin-left: 0.25rem;
+}
+
+/* ── Table row states ────────────────────────────────────── */
+
+.diagnostic-table tbody tr.row-severed td {
+  opacity: 0.55;
+}
+
+.diagnostic-table tbody tr.row-protected td {
+  opacity: 0.65;
+  font-style: italic;
+}
+
+.action-cell {
+  max-width: 280px;
+  font-size: 0.8rem;
+  color: #555;
+}
+
 /* ── Print ───────────────────────────────────────────────── */
 
 @media print {

@@ -311,3 +311,200 @@
                     = row.circuity_ratio + '×'
     else
       p.diagnostic-empty No circuity data or no routes flagged.
+
+  //- ─────────────────────────────────────────────────────────────────────────
+  //- SECTION 5: Stop consolidation
+  //- ─────────────────────────────────────────────────────────────────────────
+  section.diagnostic-section(id="stop-consolidation")
+    .diagnostic-section__header
+      h2 5. Stop Consolidation
+      .diagnostic-section__badge
+        if !stopConsolidation.enabled
+          span.section-badge.section-badge--unchanged Disabled
+        else if stopConsolidation.flaggedCount > 0
+          span.section-badge.section-badge--modified #{stopConsolidation.flaggedCount} actionable candidates
+        else
+          span.section-badge.section-badge--unchanged No candidates found
+
+    p.diagnostic-section__desc
+      | Stops spaced too tightly along a corridor, ranked by speed-gain potential
+      | (spacing deficit × service frequency) minus access penalty (walk distance for displaced riders).
+      | Removal requires: both adjacent gaps below threshold, merged gap within maximum,
+      | no barrier (severance), and no protected POI or network anchor nearby.
+
+    if stopConsolidation.enabled
+      p.diagnostic-section__meta
+        | #{stopConsolidation.totalSegments} directed segments analysed
+        | · #{stopConsolidation.results ? stopConsolidation.results.length : 0} candidates shown (top 50)
+
+      if stopConsolidation.uniqueRouteIds && stopConsolidation.uniqueRouteIds.length > 0
+        .route-filter-bar(data-target="stop-consolidation-table")
+          span.route-filter-bar__label Filter by route:
+          button.route-filter-bar__btn(type="button" data-action="all") All
+          button.route-filter-bar__btn(type="button" data-action="none") None
+          each routeId in stopConsolidation.uniqueRouteIds
+            label.route-toggle
+              input(type="checkbox" checked data-route=routeId)
+              span= routeId
+
+      if stopConsolidation.results && stopConsolidation.results.length > 0
+        .diagnostic-table-wrap
+          table.diagnostic-table(id="stop-consolidation-table")
+            thead
+              tr
+                th Class.
+                th Routes
+                th Dir
+                th Stop A
+                th Stop B (candidate)
+                th Stop C
+                th Corr AB (m)
+                th Corr BC (m)
+                th Geo AB (m)
+                th Walk B→C (m)
+                th Score
+                th Action
+            tbody
+              each row in stopConsolidation.results
+                - var routeDataVal = row.route_ids || ''
+                tr(data-routes=routeDataVal class=(row.severance ? 'row-severed' : row.protected ? 'row-protected' : ''))
+                  td
+                    span(class='sc-badge sc-badge--' + row.classification)= row.classification
+                  td.routes-cell= row.route_ids
+                  td= row.direction_id
+                  td= row.stop_a_name
+                  td
+                    strong= row.stop_b_name
+                    if row.protected
+                      |
+                      span.protected-tag= row.protected_reason
+                    if row.trunk_flag
+                      |
+                      span.trunk-flag-tag trunk
+                  td= row.stop_c_name
+                  td= row.corridor_dist_ab_m
+                  td= row.corridor_dist_bc_m
+                  td= row.geographic_dist_ab_m
+                  td
+                    if row.walk_dist_m >= 0
+                      span(class=row.severance ? 'walk-severed' : 'walk-ok')= row.walk_dist_m
+                      if row.severance
+                        |  ⚠
+                    else
+                      span.walk-na —
+                  td
+                    if row.score > 0
+                      strong= row.score
+                    else
+                      = '—'
+                  td.action-cell= row.recommended_action
+
+        if stopConsolidation.geojson && config.showMap
+          .diagnostic-section__map-label Map: candidate corridors (red = removal, amber = fusion, grey = excluded/protected)
+          #stop-consolidation-map.diagnostic-section__map
+          script.
+            (function() {
+              const geojson = !{JSON.stringify(stopConsolidation.geojson)};
+              if (!maplibregl || !geojson || !geojson.features || !geojson.features.length) return;
+
+              // Only use LineString features for bounding box
+              const lineFeats = geojson.features.filter(f => f.geometry.type === 'LineString');
+              if (!lineFeats.length) return;
+
+              const allCoords = lineFeats.flatMap(f => f.geometry.coordinates);
+              const lons = allCoords.map(c => c[0]), lats = allCoords.map(c => c[1]);
+              const bounds = [
+                [Math.min(...lons) - 0.005, Math.min(...lats) - 0.005],
+                [Math.max(...lons) + 0.005, Math.max(...lats) + 0.005]
+              ];
+
+              const mapStyleUrl = '#{config.mapStyleUrl || ""}';
+              const map = new maplibregl.Map({
+                container: 'stop-consolidation-map',
+                style: mapStyleUrl || {
+                  version: 8,
+                  sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256 } },
+                  layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
+                },
+                bounds: bounds
+              });
+
+              const classColor = {
+                removal: '#d72222',
+                fusion: '#f08700',
+                excluded: '#aaa'
+              };
+
+              map.on('load', function() {
+                // Separate line and point sources
+                const lineData = { type: 'FeatureCollection', features: geojson.features.filter(f => f.geometry.type === 'LineString') };
+                const pointData = { type: 'FeatureCollection', features: geojson.features.filter(f => f.geometry.type === 'Point') };
+
+                map.addSource('sc-lines', { type: 'geojson', data: lineData });
+                map.addSource('sc-points', { type: 'geojson', data: pointData });
+
+                // Lines coloured by classification
+                map.addLayer({
+                  id: 'sc-line-layer',
+                  type: 'line',
+                  source: 'sc-lines',
+                  paint: {
+                    'line-color': ['match', ['get', 'classification'],
+                      'removal', '#d72222',
+                      'fusion',  '#f08700',
+                      '#aaa'
+                    ],
+                    'line-width': ['case', ['get', 'protected'], 1, 3],
+                    'line-opacity': ['case', ['get', 'protected'], 0.35, 0.8],
+                    'line-dasharray': ['case', ['get', 'severance'], ['literal', [4, 3]], ['literal', [1]]]
+                  }
+                });
+
+                // Stop B points
+                map.addLayer({
+                  id: 'sc-point-layer',
+                  type: 'circle',
+                  source: 'sc-points',
+                  paint: {
+                    'circle-radius': 5,
+                    'circle-color': ['match', ['get', 'classification'],
+                      'removal', '#d72222',
+                      'fusion',  '#f08700',
+                      '#888'
+                    ],
+                    'circle-stroke-width': 1.5,
+                    'circle-stroke-color': '#fff',
+                    'circle-opacity': ['case', ['get', 'protected'], 0.3, 0.9]
+                  }
+                });
+
+                const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+                map.on('mouseenter', 'sc-line-layer', function(e) {
+                  map.getCanvas().style.cursor = 'pointer';
+                  const p = e.features[0].properties;
+                  const walkInfo = p.walk_dist_m >= 0 ? (' · walk ' + p.walk_dist_m + ' m' + (p.severance ? ' ⚠ severed' : '')) : '';
+                  popup.setLngLat(e.lngLat)
+                    .setHTML(
+                      '<strong>' + p.stop_b_name + '</strong> [' + p.classification + ']' +
+                      '<br>Routes: ' + p.route_ids +
+                      '<br>AB: ' + p.corridor_dist_ab_m + ' m · BC: ' + p.corridor_dist_bc_m + ' m' +
+                      walkInfo +
+                      (p.protected ? '<br>🛡 Protected: ' + p.protected_reason : '')
+                    )
+                    .addTo(map);
+                });
+                map.on('mouseleave', 'sc-line-layer', function() {
+                  map.getCanvas().style.cursor = '';
+                  popup.remove();
+                });
+
+                window.__scMap = map;
+              });
+            })();
+      else
+        p.diagnostic-empty No stop consolidation candidates for this date and thresholds.
+    else
+      p.diagnostic-empty
+        | Stop consolidation is disabled. Set&nbsp;
+        code diagnosticsStopConsolidationEnabled: true
+        |  in your config to enable.

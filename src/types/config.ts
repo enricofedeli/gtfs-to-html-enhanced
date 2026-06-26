@@ -91,4 +91,14 @@ export interface Config {
   diagnosticsCircuityMinStraightLineKm?: number; // routes below this are treated as circular loops (default 0.2)
   diagnosticsRailFeedSqlitePath?: string; // path to rail DB for rail-bus matrix diagnostic
   diagnosticsMaxTransferWaitMinutes?: number; // flag threshold for rail-bus waits (default 20)
+
+  // Stop consolidation diagnostic
+  diagnosticsStopConsolidationEnabled?: boolean;
+  diagnosticsOsrmFootUrl?: string; // default: http://localhost:5000
+  diagnosticsLineTypesPath?: string; // default: config/line_types.csv
+  diagnosticsSpacingThresholdsPath?: string; // default: config/spacing_thresholds.csv
+  diagnosticsProtectedPoiCategoriesPath?: string; // default: config/protected_poi_categories.csv
+  diagnosticsPoiGeoJsonPath?: string; // optional GeoJSON file for POI protect-list
+  diagnosticsPoiCategoryField?: string; // POI category field name (default: fclass)
+  diagnosticsDefaultLineType?: string; // default line type for unmapped routes (default: urban)
 }
