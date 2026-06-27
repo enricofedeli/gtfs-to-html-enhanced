@@ -1,0 +1,369 @@
+/* ============================================================
+   Diagnostics report styles
+   ============================================================ */
+
+.diagnostics-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 3rem;
+  font-family: var(--font-body, system-ui, sans-serif);
+  color: #222;
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+
+.diagnostics-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  border-bottom: 2px solid #0057b8;
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+
+.diagnostics-header__logo {
+  height: 48px;
+  width: auto;
+  object-fit: contain;
+  align-self: flex-start;
+}
+
+.diagnostics-header__title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin: 0;
+  color: #003d8a;
+}
+
+.diagnostics-header__meta {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+/* ── Sections ────────────────────────────────────────────── */
+
+.diagnostic-section {
+  background: #fff;
+  border: 1px solid #dde3ed;
+  border-radius: 6px;
+  padding: 1.25rem 1.5rem 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 1px 4px rgba(0 0 0 / 0.06);
+}
+
+.diagnostic-section__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.diagnostic-section__header h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0;
+  color: #003d8a;
+}
+
+.diagnostic-section__desc {
+  color: #444;
+  font-size: 0.9rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.diagnostic-section__meta {
+  font-size: 0.8rem;
+  color: #777;
+  margin: 0 0 0.75rem;
+}
+
+.diagnostic-empty {
+  color: #888;
+  font-style: italic;
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+
+/* ── Map container ───────────────────────────────────────── */
+
+.diagnostic-section__map {
+  height: 420px;
+  border-radius: 4px;
+  border: 1px solid #ccd3e0;
+  margin-top: 0.5rem;
+}
+
+.diagnostic-section__map-label {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 1rem;
+  margin-bottom: 0.3rem;
+}
+
+/* ── TPH badges ──────────────────────────────────────────── */
+
+.tph-badge {
+  display: inline-block;
+  padding: 0.15em 0.5em;
+  border-radius: 3px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tph-badge--high {
+  background: #d4edda;
+  color: #155724;
+}
+
+.tph-badge--medium {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.tph-badge--low {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+/* ── Route badge (small pill for route short name) ────────── */
+
+.route-badge {
+  display: inline-block;
+  padding: 0.1em 0.45em;
+  background: #0057b8;
+  color: #fff;
+  border-radius: 3px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* ── Route filter bar ────────────────────────────────────── */
+
+.route-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  background: #f4f7fb;
+  border: 1px solid #dde3ed;
+  border-radius: 4px;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+}
+
+.route-filter-bar__label {
+  color: #555;
+  margin-right: 0.25rem;
+  flex-shrink: 0;
+}
+
+.route-filter-bar__btn {
+  padding: 0.15em 0.6em;
+  border: 1px solid #aab4c8;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: #003d8a;
+}
+
+.route-filter-bar__btn:hover {
+  background: #dde9f7;
+}
+
+.route-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  cursor: pointer;
+  padding: 0.1em 0.4em;
+  border: 1px solid #bfc8da;
+  border-radius: 3px;
+  background: #fff;
+  font-size: 0.78rem;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.route-toggle:has(input:checked) {
+  background: #e6eeff;
+  border-color: #0057b8;
+  color: #003d8a;
+  font-weight: 600;
+}
+
+.route-toggle input {
+  /* visually hidden but keyboard accessible */
+  width: 0;
+  height: 0;
+  opacity: 0;
+  margin: 0;
+}
+
+/* ── Tables ──────────────────────────────────────────────── */
+
+.diagnostic-table-wrap {
+  overflow-x: auto;
+  border-radius: 4px;
+  border: 1px solid #dde3ed;
+}
+
+.diagnostic-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.diagnostic-table thead th {
+  background: #eef2f9;
+  color: #003d8a;
+  font-weight: 700;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid #c8d3e8;
+  white-space: nowrap;
+}
+
+.diagnostic-table tbody tr {
+  border-bottom: 1px solid #eef0f5;
+}
+
+.diagnostic-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.diagnostic-table tbody tr.hidden-row {
+  display: none;
+}
+
+.diagnostic-table tbody td {
+  padding: 0.4rem 0.75rem;
+  vertical-align: middle;
+  color: #333;
+}
+
+.diagnostic-table tbody tr:hover td {
+  background: #f5f8ff;
+}
+
+.routes-cell {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #555;
+  font-size: 0.8rem;
+}
+
+/* ── Stop consolidation badges ───────────────────────────── */
+
+.sc-badge {
+  display: inline-block;
+  padding: 0.12em 0.45em;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sc-badge--removal {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.sc-badge--fusion {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.sc-badge--excluded {
+  background: #e9ecef;
+  color: #6c757d;
+}
+
+/* ── Walk distance indicators ────────────────────────────── */
+
+.walk-ok {
+  color: #155724;
+  font-weight: 600;
+}
+
+.walk-severed {
+  color: #721c24;
+  font-weight: 700;
+}
+
+.walk-na {
+  color: #aaa;
+}
+
+/* ── Protection and trunk tags ───────────────────────────── */
+
+.protected-tag {
+  display: inline-block;
+  padding: 0.08em 0.35em;
+  background: #cce5ff;
+  color: #004085;
+  border-radius: 3px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin-left: 0.25rem;
+}
+
+.trunk-flag-tag {
+  display: inline-block;
+  padding: 0.08em 0.35em;
+  background: #d4edda;
+  color: #155724;
+  border-radius: 3px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin-left: 0.25rem;
+}
+
+/* ── Table row states ────────────────────────────────────── */
+
+.diagnostic-table tbody tr.row-severed td {
+  opacity: 0.55;
+}
+
+.diagnostic-table tbody tr.row-protected td {
+  opacity: 0.65;
+  font-style: italic;
+}
+
+.action-cell {
+  max-width: 280px;
+  font-size: 0.8rem;
+  color: #555;
+}
+
+/* ── Print ───────────────────────────────────────────────── */
+
+@media print {
+  .route-filter-bar,
+  .diagnostic-section__map {
+    display: none !important;
+  }
+
+  .diagnostics-page {
+    max-width: 100%;
+    padding: 0;
+  }
+
+  .diagnostic-section {
+    break-inside: avoid;
+    border: 1px solid #ccc;
+    box-shadow: none;
+    margin-bottom: 1rem;
+  }
+
+  .diagnostic-table {
+    font-size: 0.75rem;
+  }
+}

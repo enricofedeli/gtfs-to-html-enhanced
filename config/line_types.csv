@@ -1,0 +1,8 @@
+route_id,line_type
+# Map route_id → urban / suburban / extraurban
+# Routes not listed here fall back to the default_line_type in config (default: urban)
+# Example entries for TPER Bologna:
+# 27,urban
+# 20,urban
+# 91,suburban
+# 101,extraurban

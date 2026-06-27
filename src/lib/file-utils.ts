@@ -236,30 +236,23 @@ export async function copyStaticAssets(config: Config, outputPath: string) {
   }
 
   if (config.showMap) {
-    await copyFile(
-      join(thisModuleFolderPath, 'dist/browser/maplibre-gl.js'),
-      join(outputPath, 'js/maplibre-gl.js'),
-    );
-
-    await copyFile(
-      join(thisModuleFolderPath, 'dist/browser/maplibre-gl.js.map'),
-      join(outputPath, 'js/maplibre-gl.js.map'),
-    );
-
-    await copyFile(
-      join(thisModuleFolderPath, 'dist/browser/maplibre-gl.css'),
-      join(outputPath, 'css/maplibre-gl.css'),
-    );
-
-    await copyFile(
-      join(thisModuleFolderPath, 'dist/browser/maplibre-gl-geocoder.js'),
-      join(outputPath, 'js/maplibre-gl-geocoder.js'),
-    );
-
-    await copyFile(
-      join(thisModuleFolderPath, 'dist/browser/maplibre-gl-geocoder.css'),
-      join(outputPath, 'css/maplibre-gl-geocoder.css'),
-    );
+    // MapLibre browser bundles may not be present in dev environments or when
+    // selfContained: true is used (inlineLocalAssets() substitutes CDN URLs).
+    // Silently skip missing files rather than crashing the whole pipeline.
+    const mapLibreFiles = [
+      ['dist/browser/maplibre-gl.js', 'js/maplibre-gl.js'],
+      ['dist/browser/maplibre-gl.js.map', 'js/maplibre-gl.js.map'],
+      ['dist/browser/maplibre-gl.css', 'css/maplibre-gl.css'],
+      ['dist/browser/maplibre-gl-geocoder.js', 'js/maplibre-gl-geocoder.js'],
+      ['dist/browser/maplibre-gl-geocoder.css', 'css/maplibre-gl-geocoder.css'],
+    ] as const;
+    for (const [src, dest] of mapLibreFiles) {
+      try {
+        await copyFile(join(thisModuleFolderPath, src), join(outputPath, dest));
+      } catch {
+        // Bundle not present — CDN substitution will handle it at render time
+      }
+    }
   }
 }
 
@@ -363,6 +356,84 @@ export function generateFolderName(timetablePage) {
 }
 
 /*
+ * Inline local CSS <link> and JS <script src> tags into the HTML string.
+ *
+ * Called when config.selfContained === true so the resulting HTML file has no
+ * external local dependencies and can be opened from any directory.
+ *
+ * Large third-party bundles (MapLibre, geocoder) are replaced with CDN URLs
+ * instead of being inlined — they are too large to embed per-page.
+ * CDN URLs (https://) already present in the HTML are always left unchanged.
+ */
+export async function inlineLocalAssets(
+  html: string,
+  viewsFolderPath: string,
+): Promise<string> {
+  const CDN: Record<string, string> = {
+    'maplibre-gl.css': 'https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css',
+    'maplibre-gl.js': 'https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js',
+    'maplibre-gl-geocoder.js':
+      'https://unpkg.com/@maplibre/maplibre-gl-geocoder@1/dist/maplibre-gl-geocoder.min.js',
+    'maplibre-gl-geocoder.css':
+      'https://unpkg.com/@maplibre/maplibre-gl-geocoder@1/dist/maplibre-gl-geocoder.css',
+  };
+
+  // Strip leading "../" or "./" sequences and resolve under viewsFolderPath
+  function resolveAsset(href: string): string {
+    return join(viewsFolderPath, href.replace(/^(\.\.\/|\.\/)+/, ''));
+  }
+
+  const replacements: [string, string][] = [];
+
+  // Extract the value of a named attribute from a tag string (e.g. href="...")
+  function attr(tag: string, name: string): string | undefined {
+    const m = tag.match(new RegExp(`\\b${name}="([^"]*)"`, 'i'));
+    return m?.[1];
+  }
+
+  // Inline <link rel="stylesheet" href="relative/path.css">
+  // Handles any attribute order (href before or after rel).
+  for (const m of html.matchAll(/<link\b[^>]*>/gi)) {
+    const [tag] = m;
+    if (!/\brel="stylesheet"/i.test(tag)) continue;
+    const href = attr(tag, 'href');
+    if (!href || /^https?:\/\//i.test(href)) continue;
+    const filename = href.split('/').at(-1) ?? href;
+    try {
+      const css = await readFile(resolveAsset(href), 'utf8');
+      replacements.push([tag, `<style>/* ${filename} */\n${css}</style>`]);
+    } catch {
+      if (CDN[filename])
+        replacements.push([
+          tag,
+          `<link rel="stylesheet" href="${CDN[filename]}">`,
+        ]);
+      // else: unknown local file, leave unchanged
+    }
+  }
+
+  // Inline <script src="relative/path.js" ...></script>
+  for (const m of html.matchAll(
+    /<script\b[^>]*\bsrc="((?!https?:\/\/)[^"]+)"[^>]*><\/script>/gi,
+  )) {
+    const [tag, src] = m;
+    const filename = src.split('/').at(-1) ?? src;
+    try {
+      const js = await readFile(resolveAsset(src), 'utf8');
+      replacements.push([tag, `<script>/* ${filename} */\n${js}</script>`]);
+    } catch {
+      if (CDN[filename])
+        replacements.push([tag, `<script src="${CDN[filename]}"></script>`]);
+    }
+  }
+
+  for (const [tag, replacement] of replacements) {
+    html = html.replace(tag, replacement);
+  }
+  return html;
+}
+
+/*
  * Render the HTML for a timetable based on the config.
  */
 export async function renderTemplate(
@@ -373,7 +444,7 @@ export async function renderTemplate(
   const templatePath = getPathToTemplateFile(templateFileName, config);
 
   // Make template functions, lodash and marked available inside pug templates.
-  const html = await renderFile(templatePath, {
+  let html = await renderFile(templatePath, {
     _,
     cssEscape,
     md: (text: string) => sanitizeHtml(marked.parseInline(text) as string),
@@ -382,6 +453,11 @@ export async function renderTemplate(
     formatRouteTextColor,
     ...templateVars,
   });
+
+  // Inline all local CSS/JS assets when selfContained is requested
+  if (config.selfContained === true) {
+    html = await inlineLocalAssets(html, getPathToViewsFolder(config));
+  }
 
   // Beautify HTML if `beautify` is set in config.
   if (config.beautify === true) {

@@ -8,6 +8,7 @@ import { isGtfsError } from 'gtfs';
 import { getConfig } from '../lib/file-utils.js';
 import { formatError } from '../lib/log-utils.js';
 import gtfsToHtml, { isGtfsToHtmlError } from '../index.js';
+import { runDiagnostics } from '../lib/diagnostics/index.js';
 
 const pe = new PrettyError();
 
@@ -31,7 +32,14 @@ const { argv } = yargs(hideBin(process.argv))
     describe: 'Show only stops with a `timepoint` value in `stops.txt`',
     type: 'boolean',
   })
-  .default('showOnlyTimepoint', undefined);
+  .default('showOnlyTimepoint', undefined)
+  .option('d', {
+    alias: 'diagnostics',
+    describe:
+      'Run network diagnostics on the imported GTFS database and write results to diagnosticsOutputPath',
+    type: 'boolean',
+  })
+  .default('diagnostics', undefined);
 
 const handleError = (error: any) => {
   const text = error || 'Unknown Error';
@@ -51,7 +59,18 @@ const handleError = (error: any) => {
 
 const setupImport = async () => {
   const config = await getConfig(argv);
-  await gtfsToHtml(config);
+
+  // --diagnostics flag (or config.runDiagnostics) runs diagnostics after import.
+  // The normal timetable-generation pipeline still runs first so the DB is populated.
+  if ((argv as any).diagnostics || config.runDiagnostics) {
+    // Run the normal pipeline first (imports GTFS, opens DB singleton)
+    await gtfsToHtml(config);
+    // Then run diagnostics against the now-open DB
+    await runDiagnostics(config);
+  } else {
+    await gtfsToHtml(config);
+  }
+
   process.exit();
 };
 

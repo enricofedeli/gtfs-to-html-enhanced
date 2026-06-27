@@ -1,0 +1,17 @@
+extends layout
+block content
+  include diagnostics_index.pug
+
+block extraHeader
+  if config.showMap && hiddenTrunk.geojson
+    if config.maplibreLocalAssets
+      link(href=`${config.assetPath}css/maplibre-gl.css` rel="stylesheet")
+      script(src=`${config.assetPath}js/maplibre-gl.js`)
+    else
+      link(href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet")
+      script(src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js")
+
+  link(rel="stylesheet" href=`${config.assetPath}css/timetable_styles.css`)
+  link(rel="stylesheet" href=`${config.assetPath}css/comparison_styles.css`)
+  link(rel="stylesheet" href=`${config.assetPath}css/diagnostics_styles.css`)
+  script(src=`${config.assetPath}js/diagnostics.js` defer)

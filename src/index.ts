@@ -23,3 +23,6 @@ export type {
   FormattedTimetable,
   FormattedTimetablePage,
 } from './types/index.js';
+
+export { runDiagnostics } from './lib/diagnostics/index.js';
+export { copyStaticAssets } from './lib/file-utils.js';
